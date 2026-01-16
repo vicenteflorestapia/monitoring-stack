@@ -44,7 +44,7 @@ class LoadGenerator:
                 self.stats['inserts'] += batch
         except Exception as e:
             conn.rollback()
-            print(f"Error: {e}")
+            print(f"[ERROR] Insert: {e}")
         finally:
             self.pool.putconn(conn)
 
@@ -52,14 +52,21 @@ class LoadGenerator:
         conn = self.pool.getconn()
         try:
             with conn.cursor() as cur:
+                new_status = random.choice(['pending', 'completed', 'failed'])
                 cur.execute(f"""
-                    UPDATE clients.{client} SET status='completed'
-                    WHERE id IN (SELECT id FROM clients.{client} WHERE status='pending' LIMIT 20)
-                """)
+                    UPDATE clients.{client} 
+                    SET status = %s
+                    WHERE id IN (
+                        SELECT id FROM clients.{client} 
+                        WHERE status = 'pending' 
+                        LIMIT 20
+                    )
+                """, (new_status,))
                 self.stats['updates'] += cur.rowcount
                 conn.commit()
         except Exception as e:
             conn.rollback()
+            print(f"[ERROR] Update: {e}")
         finally:
             self.pool.putconn(conn)
 
@@ -67,9 +74,15 @@ class LoadGenerator:
         conn = self.pool.getconn()
         try:
             with conn.cursor() as cur:
-                cur.execute(f"SELECT category, COUNT(*), SUM(amount) FROM clients.{client} GROUP BY category")
+                cur.execute(f"""
+                    SELECT category, COUNT(*), SUM(amount) 
+                    FROM clients.{client} 
+                    GROUP BY category
+                """)
                 cur.fetchall()
                 self.stats['selects'] += 1
+        except Exception as e:
+            print(f"[ERROR] Select: {e}")
         finally:
             self.pool.putconn(conn)
 
@@ -82,12 +95,17 @@ class LoadGenerator:
 
     def run(self):
         cfg = self.configs[self.mode]
-        print(f"Load Generator - Mode: {self.mode} | Workers: {cfg['workers']}")
+        print(f"{'='*60}")
+        print(f"  Load Generator - Mode: {self.mode.upper()}")
+        print(f"  Workers: {cfg['workers']} | Delay: {cfg['delay']}s | Batch: {cfg['batch']}")
+        print(f"  Target DB: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
+        print(f"  Press Ctrl+C to stop")
+        print(f"{'='*60}")
         
         def stats_printer():
             while self.running:
                 time.sleep(10)
-                print(f"Stats: {self.stats}")
+                print(f"\n[STATS] Inserts: {self.stats['inserts']} | Updates: {self.stats['updates']} | Selects: {self.stats['selects']}")
         
         threading.Thread(target=stats_printer, daemon=True).start()
         
@@ -96,10 +114,12 @@ class LoadGenerator:
                 [ex.submit(self.worker, i) for i in range(cfg['workers'])]
                 while True: time.sleep(1)
             except KeyboardInterrupt:
-                print("\nStopping...")
+                print("\n\nStopping...")
                 self.running = False
         
-        print(f"Final: {self.stats}")
+        print(f"\n{'='*60}")
+        print(f"  FINAL: Inserts: {self.stats['inserts']} | Updates: {self.stats['updates']} | Selects: {self.stats['selects']}")
+        print(f"{'='*60}")
         self.pool.closeall()
 
 if __name__ == '__main__':
