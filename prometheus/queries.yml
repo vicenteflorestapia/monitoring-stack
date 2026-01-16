@@ -1,0 +1,88 @@
+pg_client_tables:
+  query: |
+    SELECT
+      schemaname,
+      relname as client_name,
+      seq_scan,
+      idx_scan,
+      n_tup_ins as inserts_total,
+      n_tup_upd as updates_total,
+      n_tup_del as deletes_total,
+      n_live_tup as live_rows,
+      n_dead_tup as dead_rows
+    FROM pg_stat_user_tables
+    WHERE schemaname = 'clients'
+  metrics:
+    - schemaname:
+        usage: "LABEL"
+        description: "Schema name"
+    - client_name:
+        usage: "LABEL"
+        description: "Client table name"
+    - seq_scan:
+        usage: "COUNTER"
+        description: "Sequential scans"
+    - idx_scan:
+        usage: "COUNTER"
+        description: "Index scans"
+    - inserts_total:
+        usage: "COUNTER"
+        description: "Total inserts"
+    - updates_total:
+        usage: "COUNTER"
+        description: "Total updates"
+    - deletes_total:
+        usage: "COUNTER"
+        description: "Total deletes"
+    - live_rows:
+        usage: "GAUGE"
+        description: "Live rows"
+    - dead_rows:
+        usage: "GAUGE"
+        description: "Dead rows"
+
+pg_client_table_size:
+  query: |
+    SELECT
+      schemaname,
+      relname as client_name,
+      pg_total_relation_size(relid) as total_bytes
+    FROM pg_stat_user_tables
+    WHERE schemaname = 'clients'
+  metrics:
+    - schemaname:
+        usage: "LABEL"
+        description: "Schema"
+    - client_name:
+        usage: "LABEL"
+        description: "Client"
+    - total_bytes:
+        usage: "GAUGE"
+        description: "Total size bytes"
+
+pg_database_stats:
+  query: |
+    SELECT
+      datname as database,
+      numbackends as connections,
+      xact_commit as commits,
+      xact_rollback as rollbacks,
+      deadlocks
+    FROM pg_stat_database
+    WHERE datname = current_database()
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database"
+    - connections:
+        usage: "GAUGE"
+        description: "Connections"
+    - commits:
+        usage: "COUNTER"
+        description: "Commits"
+    - rollbacks:
+        usage: "COUNTER"
+        description: "Rollbacks"
+    - deadlocks:
+        usage: "COUNTER"
+        description: "Deadlocks"
