@@ -1,53 +1,209 @@
 # Monitoring Stack
 
-Prometheus + Grafana + PostgreSQL monitoring
+Prometheus + Grafana para monitoreo de hardware (CPU, RAM, Disco, GPU) y PostgreSQL.
 
 ## Contenido
 
-- [Quick Start con Docker](#quick-start-con-docker)
-- [Instalación sin Docker (Producción)](#instalación-sin-docker-producción)
-- [Configurar conexión a DB real](#configurar-conexión-a-db-real)
+- [Quick Start con Docker (desarrollo)](#quick-start-con-docker)
+- [Instalación en Windows Server (producción)](#instalación-en-windows-server-producción)
+- [Instalación en Linux (producción)](#instalación-en-linux-producción)
+- [Configurar conexión a PostgreSQL](#configurar-conexión-a-postgresql)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Quick Start con Docker
 
+Para desarrollo local:
+
 ```bash
+# Copiar archivo de ejemplo y configurar credenciales
+cp .env.example .env
+# Editar .env con tus credenciales
+
+# Levantar
 docker-compose up -d
+
+# Verificar
+docker-compose ps
 ```
 
-| Servicio | URL | Credenciales |
-|----------|-----|--------------|
-| Grafana | http://localhost:3000 | admin / grafana_admin_2024 |
-| Prometheus | http://localhost:9090 | - |
+Acceder a:
+- **Grafana:** http://localhost:3000
+- **Prometheus:** http://localhost:9090
 
 ---
 
-## Instalación sin Docker (Producción)
+## Instalación en Windows Server (Producción)
 
-### Requisitos
+### Requisitos previos
 
-- Windows Server / Linux / macOS
-- PostgreSQL accesible en la red
-- Puertos disponibles: 9090 (Prometheus), 9100 (node_exporter), 9187 (postgres_exporter), 3000 (Grafana)
+- Windows Server 2019/2022
+- PowerShell como Administrador
+- NSSM (descargar de https://nssm.cc/download)
+- GPU NVIDIA con drivers instalados (opcional)
+
+### Paso 1: Crear estructura de carpetas
+
+```powershell
+mkdir C:\monitoring
+mkdir C:\monitoring\prometheus
+mkdir C:\monitoring\postgres_exporter
+mkdir C:\monitoring\windows_exporter
+```
+
+### Paso 2: Instalar Windows Exporter (CPU, RAM, Disco, Red)
+
+```powershell
+# Descargar última versión desde:
+# https://github.com/prometheus-community/windows_exporter/releases
+
+# Instalar MSI
+msiexec /i windows_exporter-0.25.1-amd64.msi ENABLED_COLLECTORS="cpu,cs,logical_disk,memory,net,os,process,system" /qn
+
+# Verificar (puerto 9182)
+curl http://localhost:9182/metrics
+```
+
+### Paso 3: Instalar NVIDIA GPU Exporter (si tienes GPU)
+
+```powershell
+# Verificar que nvidia-smi funciona
+nvidia-smi
+
+# Descargar desde:
+# https://github.com/utkuozdemir/nvidia_gpu_exporter/releases
+
+# Extraer a C:\monitoring\nvidia_gpu_exporter\
+
+# Instalar como servicio con NSSM
+nssm install nvidia_gpu_exporter "C:\monitoring\nvidia_gpu_exporter\nvidia_gpu_exporter.exe"
+nssm set nvidia_gpu_exporter AppDirectory "C:\monitoring\nvidia_gpu_exporter"
+nssm start nvidia_gpu_exporter
+
+# Verificar (puerto 9835)
+curl http://localhost:9835/metrics
+```
+
+### Paso 4: Instalar Postgres Exporter
+
+```powershell
+# Descargar desde:
+# https://github.com/prometheus-community/postgres_exporter/releases
+
+# Extraer postgres_exporter.exe a C:\monitoring\postgres_exporter\
+
+# Copiar queries.yml desde el repo a C:\monitoring\postgres_exporter\
+
+# Instalar como servicio con NSSM
+nssm install postgres_exporter "C:\monitoring\postgres_exporter\postgres_exporter.exe"
+nssm set postgres_exporter AppParameters "--extend.query-path=C:\monitoring\postgres_exporter\queries.yml"
+nssm set postgres_exporter AppEnvironmentExtra "DATA_SOURCE_NAME=postgresql://USUARIO:PASSWORD@localhost:5432/DATABASE?sslmode=disable"
+nssm set postgres_exporter AppDirectory "C:\monitoring\postgres_exporter"
+
+# Iniciar
+nssm start postgres_exporter
+
+# Verificar (puerto 9187)
+curl http://localhost:9187/metrics
+```
+
+### Paso 5: Instalar Prometheus
+
+```powershell
+# Descargar desde:
+# https://github.com/prometheus/prometheus/releases
+
+# Extraer a C:\monitoring\prometheus\
+
+# Copiar prometheus.yml desde el repo (o crear uno nuevo)
+# Ver sección "Configurar prometheus.yml para Windows"
+
+# Instalar como servicio con NSSM
+nssm install prometheus "C:\monitoring\prometheus\prometheus.exe"
+nssm set prometheus AppParameters "--config.file=C:\monitoring\prometheus\prometheus.yml --storage.tsdb.path=C:\monitoring\prometheus\data --storage.tsdb.retention.time=30d"
+nssm set prometheus AppDirectory "C:\monitoring\prometheus"
+
+# Iniciar
+nssm start prometheus
+
+# Verificar (puerto 9090)
+curl http://localhost:9090/api/v1/targets
+```
+
+### Paso 6: Instalar Grafana
+
+```powershell
+# Descargar MSI desde:
+# https://grafana.com/grafana/download?platform=windows
+
+# Ejecutar instalador
+# Se instala en C:\Program Files\GrafanaLabs\grafana
+# El servicio inicia automáticamente
+
+# Verificar (puerto 3000)
+curl http://localhost:3000
+```
+
+### Paso 7: Configurar Grafana
+
+1. Abrir http://localhost:3000
+2. Login inicial: `admin` / `admin` (cambiar en primer login)
+3. **Connections** → **Data sources** → **Add data source** → **Prometheus**
+4. URL: `http://localhost:9090`
+5. Click **Save & Test**
+
+### Configurar prometheus.yml para Windows
+
+Crear `C:\monitoring\prometheus\prometheus.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'windows'
+    static_configs:
+      - targets: ['localhost:9182']
+
+  - job_name: 'nvidia-gpu'
+    static_configs:
+      - targets: ['localhost:9835']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['localhost:9187']
+```
+
+### Verificar todos los servicios
+
+```powershell
+# Ver servicios instalados
+Get-Service prometheus, postgres_exporter, nvidia_gpu_exporter
+
+# Ver en Prometheus UI
+# http://localhost:9090/targets
+# Todos deben estar en estado UP
+```
 
 ---
 
-### Paso 1: Instalar Node Exporter (métricas de hardware)
+## Instalación en Linux (Producción)
 
-#### Linux
+### Paso 1: Node Exporter (CPU, RAM, Disco, Red)
 
 ```bash
-# Descargar
 cd /tmp
 curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
 tar xvfz node_exporter-1.7.0.linux-amd64.tar.gz
-
-# Instalar
 sudo mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
 sudo useradd -rs /bin/false node_exporter
 
-# Crear servicio
 sudo tee /etc/systemd/system/node_exporter.service > /dev/null <<EOF
 [Unit]
 Description=Node Exporter
@@ -61,59 +217,29 @@ ExecStart=/usr/local/bin/node_exporter
 WantedBy=multi-user.target
 EOF
 
-# Iniciar
 sudo systemctl daemon-reload
-sudo systemctl enable node_exporter
-sudo systemctl start node_exporter
-
-# Verificar
+sudo systemctl enable --now node_exporter
 curl http://localhost:9100/metrics
 ```
 
-#### Windows Server
-
-Usar **windows_exporter** en lugar de node_exporter:
-
-```powershell
-# Descargar desde https://github.com/prometheus-community/windows_exporter/releases
-# Ejemplo: windows_exporter-0.25.1-amd64.msi
-
-# Instalar como servicio
-msiexec /i windows_exporter-0.25.1-amd64.msi
-
-# Verificar
-curl http://localhost:9182/metrics
-```
-
-> **Nota:** En Windows el puerto es 9182, no 9100.
-
----
-
-### Paso 2: Instalar Postgres Exporter (métricas de PostgreSQL)
-
-#### Linux
+### Paso 2: Postgres Exporter
 
 ```bash
-# Descargar
 cd /tmp
 curl -LO https://github.com/prometheus-community/postgres_exporter/releases/download/v0.15.0/postgres_exporter-0.15.0.linux-amd64.tar.gz
 tar xvfz postgres_exporter-0.15.0.linux-amd64.tar.gz
-
-# Instalar
 sudo mv postgres_exporter-0.15.0.linux-amd64/postgres_exporter /usr/local/bin/
 sudo useradd -rs /bin/false postgres_exporter
 
-# Crear archivo de entorno con conexión a DB
 sudo mkdir -p /etc/postgres_exporter
 sudo tee /etc/postgres_exporter/postgres_exporter.env > /dev/null <<EOF
 DATA_SOURCE_NAME=postgresql://USUARIO:PASSWORD@HOST:5432/DATABASE?sslmode=disable
 EOF
 sudo chmod 600 /etc/postgres_exporter/postgres_exporter.env
 
-# Copiar queries.yml (desde este repo)
+# Copiar queries.yml desde el repo
 sudo cp prometheus/queries.yml /etc/postgres_exporter/queries.yml
 
-# Crear servicio
 sudo tee /etc/systemd/system/postgres_exporter.service > /dev/null <<EOF
 [Unit]
 Description=Postgres Exporter
@@ -128,64 +254,25 @@ ExecStart=/usr/local/bin/postgres_exporter --extend.query-path=/etc/postgres_exp
 WantedBy=multi-user.target
 EOF
 
-# Iniciar
 sudo systemctl daemon-reload
-sudo systemctl enable postgres_exporter
-sudo systemctl start postgres_exporter
-
-# Verificar
+sudo systemctl enable --now postgres_exporter
 curl http://localhost:9187/metrics
 ```
 
-#### Windows Server
-
-```powershell
-# Descargar desde https://github.com/prometheus-community/postgres_exporter/releases
-# Extraer postgres_exporter.exe a C:\postgres_exporter\
-
-# Crear archivo de configuración
-# C:\postgres_exporter\config.env
-# DATA_SOURCE_NAME=postgresql://USUARIO:PASSWORD@HOST:5432/DATABASE?sslmode=disable
-
-# Copiar queries.yml a C:\postgres_exporter\queries.yml
-
-# Instalar como servicio con NSSM (descargar de https://nssm.cc/)
-nssm install postgres_exporter "C:\postgres_exporter\postgres_exporter.exe"
-nssm set postgres_exporter AppParameters "--extend.query-path=C:\postgres_exporter\queries.yml"
-nssm set postgres_exporter AppEnvironmentExtra "DATA_SOURCE_NAME=postgresql://USUARIO:PASSWORD@HOST:5432/DATABASE?sslmode=disable"
-
-# Iniciar
-nssm start postgres_exporter
-
-# Verificar
-curl http://localhost:9187/metrics
-```
-
----
-
-### Paso 3: Instalar Prometheus
-
-#### Linux
+### Paso 3: Prometheus
 
 ```bash
-# Descargar
 cd /tmp
 curl -LO https://github.com/prometheus/prometheus/releases/download/v2.50.1/prometheus-2.50.1.linux-amd64.tar.gz
 tar xvfz prometheus-2.50.1.linux-amd64.tar.gz
-
-# Instalar
 sudo mv prometheus-2.50.1.linux-amd64 /opt/prometheus
 sudo useradd -rs /bin/false prometheus
 sudo chown -R prometheus:prometheus /opt/prometheus
-
-# Crear directorio de datos
 sudo mkdir -p /var/lib/prometheus
 sudo chown prometheus:prometheus /var/lib/prometheus
 
-# Editar configuración (ver sección "Configurar prometheus.yml")
-sudo nano /opt/prometheus/prometheus.yml
+# Editar /opt/prometheus/prometheus.yml
 
-# Crear servicio
 sudo tee /etc/systemd/system/prometheus.service > /dev/null <<EOF
 [Unit]
 Description=Prometheus
@@ -202,214 +289,74 @@ ExecStart=/opt/prometheus/prometheus \
 WantedBy=multi-user.target
 EOF
 
-# Iniciar
 sudo systemctl daemon-reload
-sudo systemctl enable prometheus
-sudo systemctl start prometheus
-
-# Verificar
+sudo systemctl enable --now prometheus
 curl http://localhost:9090/api/v1/targets
 ```
 
-#### Windows Server
-
-```powershell
-# Descargar desde https://github.com/prometheus/prometheus/releases
-# Extraer a C:\prometheus\
-
-# Editar C:\prometheus\prometheus.yml (ver sección "Configurar prometheus.yml")
-
-# Instalar como servicio con NSSM
-nssm install prometheus "C:\prometheus\prometheus.exe"
-nssm set prometheus AppParameters "--config.file=C:\prometheus\prometheus.yml --storage.tsdb.path=C:\prometheus\data"
-nssm set prometheus AppDirectory "C:\prometheus"
-
-# Iniciar
-nssm start prometheus
-
-# Verificar
-curl http://localhost:9090/api/v1/targets
-```
-
----
-
-### Paso 4: Instalar Grafana
-
-#### Linux (Ubuntu/Debian)
+### Paso 4: Grafana
 
 ```bash
-# Agregar repositorio
+# Ubuntu/Debian
 sudo apt-get install -y software-properties-common
-sudo add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
 wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
-
-# Instalar
+sudo add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
 sudo apt-get update
 sudo apt-get install grafana
-
-# Iniciar
-sudo systemctl enable grafana-server
-sudo systemctl start grafana-server
-
-# Verificar
-curl http://localhost:3000
-```
-
-#### Linux (RHEL/CentOS)
-
-```bash
-# Agregar repositorio
-sudo tee /etc/yum.repos.d/grafana.repo > /dev/null <<EOF
-[grafana]
-name=grafana
-baseurl=https://packages.grafana.com/oss/rpm
-repo_gpgcheck=1
-enabled=1
-gpgcheck=1
-gpgkey=https://packages.grafana.com/gpg.key
-EOF
-
-# Instalar
-sudo yum install grafana
-
-# Iniciar
-sudo systemctl enable grafana-server
-sudo systemctl start grafana-server
-```
-
-#### Windows Server
-
-```powershell
-# Descargar instalador MSI desde https://grafana.com/grafana/download?platform=windows
-
-# Ejecutar instalador
-# Grafana se instala en C:\Program Files\GrafanaLabs\grafana
-
-# El servicio se inicia automáticamente
-# Verificar en http://localhost:3000
+sudo systemctl enable --now grafana-server
 ```
 
 ---
 
-### Paso 5: Configurar Grafana
+## Configurar conexión a PostgreSQL
 
-1. Abrir http://localhost:3000
-2. Login inicial: `admin` / `admin` (te pedirá cambiarla)
-3. Ir a **Connections** → **Data sources** → **Add data source**
-4. Seleccionar **Prometheus**
-5. URL: `http://localhost:9090`
-6. Click **Save & Test**
-
----
-
-## Configurar conexión a DB real
-
-### 1. Crear usuario de monitoreo en PostgreSQL
-
-Conecta a tu PostgreSQL y ejecuta:
+### 1. Crear usuario de monitoreo
 
 ```sql
--- Crear usuario de solo lectura para monitoreo
-CREATE USER monitor_exporter WITH PASSWORD 'tu_password_seguro';
+-- Conectar como superusuario
+CREATE USER monitor_exporter WITH PASSWORD 'PASSWORD_SEGURO';
 
 -- Permisos básicos
 GRANT CONNECT ON DATABASE tu_database TO monitor_exporter;
 GRANT USAGE ON SCHEMA public TO monitor_exporter;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO monitor_exporter;
 
--- Permisos para vistas de estadísticas (necesarios para postgres_exporter)
+-- Permisos para estadísticas del sistema
 GRANT pg_monitor TO monitor_exporter;
 
--- Si tienes schema 'clients' para multi-tenant
-GRANT USAGE ON SCHEMA clients TO monitor_exporter;
-GRANT SELECT ON ALL TABLES IN SCHEMA clients TO monitor_exporter;
+-- Si usas schema específico (multi-tenant)
+GRANT USAGE ON SCHEMA tu_schema TO monitor_exporter;
+GRANT SELECT ON ALL TABLES IN SCHEMA tu_schema TO monitor_exporter;
 ```
 
-### 2. Editar queries.yml para tu schema
+### 2. Configurar DATA_SOURCE_NAME
 
-Edita `prometheus/queries.yml` y cambia `schemaname = 'clients'` por tu schema real:
+```
+DATA_SOURCE_NAME=postgresql://monitor_exporter:PASSWORD@localhost:5432/database?sslmode=disable
+```
+
+### 3. Editar queries.yml
+
+Si usas multi-tenant (una tabla por cliente), edita `queries.yml` y cambia el schema:
 
 ```yaml
-pg_client_tables:
-  query: |
-    SELECT
-      schemaname,
-      relname as client_name,
-      ...
-    FROM pg_stat_user_tables
-    WHERE schemaname = 'TU_SCHEMA_AQUI'   # <-- Cambiar esto
+WHERE schemaname = 'tu_schema'
 ```
 
-Si no usas multi-tenant (una tabla por cliente), puedes eliminar el filtro `WHERE` para monitorear todas las tablas.
+Si quieres monitorear todas las tablas, elimina la línea `WHERE`.
 
-### 3. Configurar prometheus.yml
+---
 
-Edita `/opt/prometheus/prometheus.yml` (Linux) o `C:\prometheus\prometheus.yml` (Windows):
+## Dashboards recomendados
 
-```yaml
-global:
-  scrape_interval: 15s
+Importar en Grafana (**Dashboards** → **Import**):
 
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-
-  # Hardware - Linux usa puerto 9100, Windows usa 9182
-  - job_name: 'node'
-    static_configs:
-      - targets: ['localhost:9100']   # Linux: 9100, Windows: 9182
-
-  # PostgreSQL
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['localhost:9187']
-```
-
-### 4. Configurar conexión del postgres_exporter
-
-Edita la variable `DATA_SOURCE_NAME`:
-
-```
-DATA_SOURCE_NAME=postgresql://monitor_exporter:tu_password_seguro@IP_DEL_SERVIDOR:5432/nombre_database?sslmode=disable
-```
-
-Ejemplos:
-
-```bash
-# PostgreSQL local
-DATA_SOURCE_NAME=postgresql://monitor_exporter:pass123@localhost:5432/production?sslmode=disable
-
-# PostgreSQL remoto
-DATA_SOURCE_NAME=postgresql://monitor_exporter:pass123@192.168.1.100:5432/production?sslmode=disable
-
-# Con SSL
-DATA_SOURCE_NAME=postgresql://monitor_exporter:pass123@db.empresa.com:5432/production?sslmode=require
-```
-
-### 5. Reiniciar servicios
-
-```bash
-# Linux
-sudo systemctl restart postgres_exporter
-sudo systemctl restart prometheus
-
-# Windows
-nssm restart postgres_exporter
-nssm restart prometheus
-```
-
-### 6. Verificar conexión
-
-```bash
-# Ver métricas de PostgreSQL
-curl http://localhost:9187/metrics | grep pg_
-
-# Ver targets en Prometheus
-curl http://localhost:9090/api/v1/targets
-```
-
-En Prometheus UI (http://localhost:9090/targets) todos los targets deben estar en estado **UP**.
+| ID | Nombre | Descripción |
+|----|--------|-------------|
+| 1860 | Node Exporter Full | CPU, RAM, Disco, Red (Linux) |
+| 14694 | Windows Exporter | CPU, RAM, Disco, Red (Windows) |
+| 9628 | PostgreSQL Database | Métricas de PostgreSQL |
+| 14574 | NVIDIA GPU | Métricas de GPU |
 
 ---
 
@@ -417,40 +364,58 @@ En Prometheus UI (http://localhost:9090/targets) todos los targets deben estar e
 
 ```
 monitoring-stack/
-├── docker-compose.yml          # Para desarrollo local
+├── docker-compose.yml          # Desarrollo local
+├── .env.example                 # Ejemplo de variables de entorno
 ├── prometheus/
 │   ├── prometheus.yml          # Config de Prometheus
-│   └── queries.yml             # Custom queries para PostgreSQL
+│   └── queries.yml             # Custom queries PostgreSQL
 ├── grafana/
-│   └── provisioning/           # Auto-config de Grafana
+│   └── provisioning/           # Auto-config Grafana
 ├── postgres/
-│   └── init/                   # Scripts de inicialización (solo Docker)
+│   └── init/                   # Init scripts (solo Docker)
 └── scripts/
-    └── load_generator.py       # Generador de carga para testing
+    └── load_generator.py       # Generador de carga (testing)
 ```
 
 ---
 
 ## Troubleshooting
 
-### postgres_exporter no conecta
+### Verificar servicios en Windows
 
-```bash
-# Probar conexión manual
-psql "postgresql://monitor_exporter:password@host:5432/database"
-
-# Ver logs
-journalctl -u postgres_exporter -f   # Linux
+```powershell
+Get-Service prometheus, postgres_exporter, nvidia_gpu_exporter
+nssm status prometheus
 ```
 
-### Métricas de tablas no aparecen
+### Ver logs en Windows
 
-1. Verificar que el schema en `queries.yml` sea correcto
-2. Verificar que el usuario tenga permisos SELECT en las tablas
-3. Revisar logs del postgres_exporter
+```powershell
+# Los logs están en el directorio de cada servicio
+# O usar Event Viewer → Windows Logs → Application
+```
 
-### Windows: node_exporter no existe
+### postgres_exporter no conecta
 
-Usar **windows_exporter** (puerto 9182):
-- Descargar: https://github.com/prometheus-community/windows_exporter/releases
-- Cambiar en prometheus.yml: `targets: ['localhost:9182']`
+```powershell
+# Probar conexión manual
+& "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U monitor_exporter -d database -h localhost
+```
+
+### GPU no aparece en métricas
+
+```powershell
+# Verificar nvidia-smi
+nvidia-smi
+
+# Verificar exporter
+curl http://localhost:9835/metrics | findstr "gpu"
+```
+
+### Reiniciar servicios
+
+```powershell
+nssm restart prometheus
+nssm restart postgres_exporter
+nssm restart nvidia_gpu_exporter
+```
