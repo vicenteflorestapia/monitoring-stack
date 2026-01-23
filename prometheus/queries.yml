@@ -1,8 +1,8 @@
-pg_client_tables:
+pg_tables_stats:
   query: |
     SELECT
       schemaname,
-      relname as client_name,
+      relname as table_name,
       seq_scan,
       idx_scan,
       n_tup_ins as inserts_total,
@@ -11,14 +11,14 @@ pg_client_tables:
       n_live_tup as live_rows,
       n_dead_tup as dead_rows
     FROM pg_stat_user_tables
-    WHERE schemaname = 'clients'
+    WHERE schemaname IN ('public', 'qaqc', 'staging', 'Sandbox')
   metrics:
     - schemaname:
         usage: "LABEL"
         description: "Schema name"
-    - client_name:
+    - table_name:
         usage: "LABEL"
-        description: "Client table name"
+        description: "Table name"
     - seq_scan:
         usage: "COUNTER"
         description: "Sequential scans"
@@ -41,21 +41,21 @@ pg_client_tables:
         usage: "GAUGE"
         description: "Dead rows"
 
-pg_client_table_size:
+pg_table_size:
   query: |
     SELECT
       schemaname,
-      relname as client_name,
+      relname as table_name,
       pg_total_relation_size(relid) as total_bytes
     FROM pg_stat_user_tables
-    WHERE schemaname = 'clients'
+    WHERE schemaname IN ('public', 'qaqc', 'staging', 'Sandbox')
   metrics:
     - schemaname:
         usage: "LABEL"
         description: "Schema"
-    - client_name:
+    - table_name:
         usage: "LABEL"
-        description: "Client"
+        description: "Table"
     - total_bytes:
         usage: "GAUGE"
         description: "Total size bytes"
