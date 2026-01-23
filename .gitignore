@@ -2,3 +2,6 @@
 *.log
 .env
 __pycache__/
+
+# Grafana config con credenciales
+grafana/conf/grafana.ini

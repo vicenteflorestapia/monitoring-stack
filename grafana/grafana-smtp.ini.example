@@ -1,0 +1,66 @@
+# Configuración SMTP para Grafana
+# Este archivo contiene la configuración de ejemplo para enviar alertas por email
+# 
+# INSTRUCCIONES:
+# 1. Copiar estas líneas a la sección [smtp] del archivo grafana.ini
+# 2. Reemplazar los placeholders con valores reales
+# 3. Reiniciar el servicio de Grafana
+
+[smtp]
+enabled = true
+host = smtp.gmail.com:587
+user = TU_EMAIL@empresa.com
+password = TU_PASSWORD_O_APP_PASSWORD_AQUI
+from_address = TU_EMAIL@empresa.com
+from_name = Grafana Alertas
+skip_verify = false
+
+# ============================================================
+# UBICACIÓN DEL ARCHIVO grafana.ini POR PLATAFORMA
+# ============================================================
+# 
+# Windows (instalación MSI):
+#   C:\Program Files\GrafanaLabs\grafana\conf\grafana.ini
+# 
+# Windows (instalación manual):
+#   D:\monitoring\grafana\grafana\conf\grafana.ini
+# 
+# Linux (apt/yum):
+#   /etc/grafana/grafana.ini
+# 
+# Docker:
+#   Montar como volumen o usar variables de entorno
+#   GF_SMTP_ENABLED=true
+#   GF_SMTP_HOST=smtp.gmail.com:587
+#   GF_SMTP_USER=tu_email@empresa.com
+#   GF_SMTP_PASSWORD=tu_password
+
+# ============================================================
+# PROVEEDORES SMTP COMUNES
+# ============================================================
+
+# Gmail / Google Workspace:
+# host = smtp.gmail.com:587
+# Si la cuenta tiene 2FA, generar App Password en:
+# https://myaccount.google.com/apppasswords
+
+# Office 365 / Outlook:
+# host = smtp.office365.com:587
+
+# Yahoo:
+# host = smtp.mail.yahoo.com:587
+
+# Servidor SMTP interno (sin autenticación):
+# host = mail.tuempresa.local:25
+# user = 
+# password = 
+# skip_verify = true
+
+# ============================================================
+# NOTAS DE SEGURIDAD
+# ============================================================
+# 
+# - NUNCA subir este archivo con credenciales reales a Git
+# - grafana.ini está en .gitignore para prevenir esto
+# - Usar App Passwords en lugar de contraseñas reales cuando sea posible
+# - Para entornos de producción, considerar usar secretos/vault

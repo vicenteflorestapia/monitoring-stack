@@ -145,6 +145,84 @@ curl http://localhost:9090/api/v1/targets
 curl http://localhost:3000
 ```
 
+## Configurar notificaciones por email (SMTP)
+
+Para que Grafana pueda enviar alertas por correo electrónico:
+
+### 1. Editar configuración de Grafana
+
+**Windows:**
+```powershell
+notepad D:\monitoring\grafana\grafana\conf\grafana.ini
+```
+
+**Linux:**
+```bash
+sudo nano /etc/grafana/grafana.ini
+```
+
+### 2. Configurar sección [smtp]
+
+Buscar la sección `[smtp]` y configurar según tu proveedor:
+
+**Gmail / Google Workspace:**
+```ini
+[smtp]
+enabled = true
+host = smtp.gmail.com:587
+user = servidor@flowhydro.cl
+password = tu_app_password_aqui
+from_address = servidor@flowhydro.cl
+from_name = Grafana Alertas
+skip_verify = false
+```
+
+**Office 365:**
+```ini
+[smtp]
+enabled = true
+host = smtp.office365.com:587
+user = servidor@flowhydro.cl
+password = tu_password_aqui
+from_address = servidor@flowhydro.cl
+from_name = Grafana Alertas
+skip_verify = false
+```
+
+### 3. App Password para Gmail (si usa 2FA)
+
+Si la cuenta de Gmail tiene verificación en 2 pasos:
+
+1. Ir a https://myaccount.google.com/apppasswords
+2. Login con la cuenta de correo
+3. Crear App Password llamada "Grafana"
+4. Usar esa contraseña de 16 caracteres en `grafana.ini`
+
+### 4. Reiniciar Grafana
+
+**Windows:**
+```powershell
+Restart-Service grafana
+```
+
+**Linux:**
+```bash
+sudo systemctl restart grafana-server
+```
+
+### 5. Probar configuración
+
+En Grafana:
+1. **Alerting** → **Contact points**
+2. Click en tu contact point
+3. Click **Test**
+4. Click **Send test notification**
+
+Deberías recibir un email de prueba.
+
+---
+
+
 ### Paso 7: Configurar Grafana
 
 1. Abrir http://localhost:3000
